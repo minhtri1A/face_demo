@@ -62,7 +62,7 @@ while cap.isOpened():
             cv2.putText(frame, "Vua Dung Cu", (box[0], box[1]-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
 
-    # Lưu frame đã xử lý mỗi 10 frame
+    # Save image frame
     # print('fram_idx ', frame_idx)
     # if frame_idx % 5 == 0:
     #     output_path = f"output_frames/frame_{frame_idx:04d}.jpg"
