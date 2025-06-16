@@ -1,0 +1,28 @@
+[project]
+name = "vdc-faceai"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "opencv-python (>=4.11.0.86,<5.0.0.0)",
+    "numpy (>=2.3.0,<3.0.0)",
+    "insightface (>=0.7.3,<0.8.0)",
+    "onnxruntime (>=1.22.0,<2.0.0)",
+    "scipy (>=1.15.3,<2.0.0)",
+    "scikit-learn (>=1.7.0,<2.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
+    "matplotlib (>=3.10.3,<4.0.0)",
+    "opencv-python-headless (>=4.11.0.86,<5.0.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "vdc_faceai", from = "src"}]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
