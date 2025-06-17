@@ -17,17 +17,20 @@ from pyngrok import ngrok
 
 app = FastAPI()
 
+print('start api')
+
 # --- Khởi tạo insightface ---
 face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 face_app.prepare(ctx_id=0)
 
 @app.websocket("/ws/face")
 async def websocket_endpoint(websocket: WebSocket):
+    print('start socket')
     await websocket.accept()
     try:
         while True:
             data = await websocket.receive_bytes()  # Nhận bytes từ client
-
+            print('receive from client')
             # Decode image từ bytes
             nparr = np.frombuffer(data, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -38,6 +41,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Face detection
             faces = face_app.get(frame)
             for idx, face in enumerate(faces):
+                print('face ', idx)
                 box = face.bbox.astype(int)
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                 
@@ -53,6 +57,7 @@ async def websocket_endpoint(websocket: WebSocket):
             encoded = base64.b64encode(buffer).decode('utf-8')
 
             await websocket.send_text(encoded)  # gửi lại base64 ảnh
+            print('send to client')
     except WebSocketDisconnect:
         print("Client disconnected")
 
