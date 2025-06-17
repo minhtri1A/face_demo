@@ -37,12 +37,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Face detection
             faces = face_app.get(frame)
-            for face in faces:
+            for idx, face in enumerate(faces):
                 box = face.bbox.astype(int)
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                
                 for landmark in face.kps:
                     x, y = map(int, landmark)
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
+               
+                cv2.putText(frame, str(idx), (box[0], box[1]-10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
 
             # Encode lại frame thành JPEG để gửi về client
             _, buffer = cv2.imencode('.jpg', frame)
@@ -53,15 +57,15 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected")
 
 
-ngrok.set_auth_token("2whbuvHI5jH1j8avQ2PMHPwpdU3_3ofa364QXXiV4invKSoaq")
-public_url = ngrok.connect(8000)
-print("Public URL:", public_url)
+# ngrok.set_auth_token("2whbuvHI5jH1j8avQ2PMHPwpdU3_3ofa364QXXiV4invKSoaq")
+# public_url = ngrok.connect(8000)
+# print("Public URL:", public_url)
 
 # --- Chạy ứng dụng (khi chạy file trực tiếp) ---
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)  # Chạy với uvicorn
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)  # Chạy với uvicorn
 
 
 
