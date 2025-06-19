@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import base64
 import asyncio
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, HTTPException
 from insightface.app import FaceAnalysis
 from starlette.websockets import WebSocketDisconnect
 from pyngrok import ngrok
@@ -108,21 +108,40 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected")
 
 
+# hls
+
+
+async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
+    print(f"******Waiting create file m3u8")
+    while not (os.path.exists(playlist_path)):
+        await asyncio.sleep(0.5)  # check mỗi 500ms
+        print("⏳ Still waiting for HLS files...")
+
+    print(f"*****Create success file m3u8 - send steam_id to client")
+  
+    response_object = {"HLS_STREAM_ID": stream_id}
+    await websocket.send_text(json.dumps(response_object))
+
+
 @app.websocket("/ws-hls/face")
 async def websocket_hls_streaming(websocket: WebSocket):
     print('*****WebSocket /ws-hls/face connected.')
     await websocket.accept()
 
     # Tạo một ID duy nhất cho stream HLS này
+    is_check_create_hls = False
     stream_id = str(uuid.uuid4())
     ffmpeg_proc = None
+    stream_path = os.path.join(HLS_DIR, stream_id) # Lấy đường dẫn stream_path ở đây
+    
     try:
         ffmpeg_proc = start_ffmpeg_hls_writer(stream_id)
+      
         # Gửi lại ID stream HLS cho client để họ có thể truy cập playlist.m3u8
-        response_object = {"HLS_STREAM_ID": stream_id}
-        await websocket.send_text(json.dumps(response_object))
-        print(f"*****HLS stream started for ID: {stream_id}")
+        # response_object = {"HLS_STREAM_ID": stream_id}
+        # await websocket.send_text(json.dumps(response_object))
 
+        print(f"*****HLS stream started for ID: {stream_id}")
         while True:
             data = await websocket.receive_bytes()
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
@@ -149,8 +168,15 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
+              # write frame to hls
                 print('write from to hls')
                 ffmpeg_proc.stdin.write(frame.tobytes())
+                # check file m3u8 created
+                if is_check_create_hls == False:
+                    is_check_create_hls = True
+                    playlist_file_path = os.path.join(stream_path, "playlist.m3u8")
+                    wait_for_hls_ready(playlist_file_path,stream_id,websocket)
+               
             except BrokenPipeError:
                 print(f"*****FFmpeg stream for ID {stream_id} closed unexpectedly.")
                 break # Thoát vòng lặp nếu pipe bị hỏng
