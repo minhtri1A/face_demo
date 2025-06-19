@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import subprocess
 import uuid
+import json
 
 
 
@@ -62,7 +63,7 @@ def start_ffmpeg_hls_writer(stream_id: str):
 # Khởi tạo ffmpeg từ đầu chương trình
 # ffmpeg_proc = start_ffmpeg_hls_writer()
 
-print('start api')
+print('*****Start api')
 
 # --- Khởi tạo insightface ---
 face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
@@ -118,7 +119,8 @@ async def websocket_hls_streaming(websocket: WebSocket):
     try:
         ffmpeg_proc = start_ffmpeg_hls_writer(stream_id)
         # Gửi lại ID stream HLS cho client để họ có thể truy cập playlist.m3u8
-        await websocket.send_text(f"HLS_STREAM_ID:{stream_id}")
+        response_object = {"HLS_STREAM_ID": stream_id}
+        await websocket.send_text(json.dumps(response_object))
         print(f"*****HLS stream started for ID: {stream_id}")
 
         while True:
@@ -127,6 +129,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
             if frame is None:
                 continue
+            print('*****Receive fram from client')
 
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
@@ -146,6 +149,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
+                print('write from to hls')
                 ffmpeg_proc.stdin.write(frame.tobytes())
             except BrokenPipeError:
                 print(f"*****FFmpeg stream for ID {stream_id} closed unexpectedly.")
@@ -180,7 +184,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)  # Chạy với uvicorn
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)  # Chạy với uvicorn
 
 
 
