@@ -15,6 +15,7 @@ from pyngrok import ngrok
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import subprocess
+import uuid
 
 
 
@@ -28,15 +29,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Hàm khởi tạo ffmpeg để ghi HLS
-def start_ffmpeg_hls_writer():
-    os.makedirs("hls", exist_ok=True)
+# Thư mục chứa các stream HLS riêng biệt
+HLS_DIR = "hls_streams"
+os.makedirs(HLS_DIR, exist_ok=True)
+
+# Mount thư mục /hls_streams
+app.mount(f"/{HLS_DIR}", StaticFiles(directory=HLS_DIR), name="hls_streams")
+
+
+# Hàm khởi tạo ffmpeg để ghi HLS cho mỗi client
+def start_ffmpeg_hls_writer(stream_id: str):
+    stream_path = os.path.join(HLS_DIR, stream_id)
+    os.makedirs(stream_path, exist_ok=True)
     cmd = [
         "ffmpeg",
         "-y",
         "-f", "rawvideo",
         "-pix_fmt", "bgr24",
-        "-s", "640x480",  # chỉnh đúng với size frame gửi từ client
+        "-s", "640x480",  # Đảm bảo khớp với kích thước khung hình từ client
         "-r", "15",
         "-i", "-",
         "-c:v", "libx264",
@@ -45,16 +55,12 @@ def start_ffmpeg_hls_writer():
         "-hls_time", "2",
         "-hls_list_size", "5",
         "-hls_flags", "delete_segments",
-        "./hls/playlist.m3u8"
+        os.path.join(stream_path, "playlist.m3u8")
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
 # Khởi tạo ffmpeg từ đầu chương trình
-ffmpeg_proc = start_ffmpeg_hls_writer()
-
-
-# Mount /hls vao thu muc hls
-app.mount("/hls", StaticFiles(directory="hls"), name="hls")
+# ffmpeg_proc = start_ffmpeg_hls_writer()
 
 print('start api')
 
@@ -102,27 +108,34 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.websocket("/ws-hls/face")
-async def websocket_endpoint(websocket: WebSocket):
-    print('start socket hls')
+async def websocket_hls_streaming(websocket: WebSocket):
+    print('*****WebSocket /ws-hls/face connected.')
     await websocket.accept()
+
+    # Tạo một ID duy nhất cho stream HLS này
+    stream_id = str(uuid.uuid4())
+    ffmpeg_proc = None
     try:
+        ffmpeg_proc = start_ffmpeg_hls_writer(stream_id)
+        # Gửi lại ID stream HLS cho client để họ có thể truy cập playlist.m3u8
+        await websocket.send_text(f"HLS_STREAM_ID:{stream_id}")
+        print(f"*****HLS stream started for ID: {stream_id}")
+
         while True:
             data = await websocket.receive_bytes()
-            print('receive from client hls')
+            frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
 
-            nparr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            print('check frame')
             if frame is None:
                 continue
 
-            # Resize cho đúng kích thước với ffmpeg
-            frame = cv2.resize(frame, (640, 480))
-            print('check resize')
-            # Face detection
-            faces = face_app.get(frame)
+            # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
+            if frame.shape[1] != 640 or frame.shape[0] != 480:
+                frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
+
+            # Xử lý khuôn mặt
+            faces = await asyncio.to_thread(face_app.get, frame)
             for idx, face in enumerate(faces):
-                print('face num ', idx)
+                print('*****face detection num ', idx)
                 box = face.bbox.astype(int)
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                 for landmark in face.kps:
@@ -131,30 +144,32 @@ async def websocket_endpoint(websocket: WebSocket):
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
 
-            # Gửi về client ảnh base64 (nếu cần)
-            # _, buffer = cv2.imencode('.jpg', frame)
-            # encoded = base64.b64encode(buffer).decode('utf-8')
-            # await websocket.send_text(encoded)
-            # print('send to client')
-
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
-                print('ffmpeg_proc to client')
                 ffmpeg_proc.stdin.write(frame.tobytes())
             except BrokenPipeError:
-                print("⚠️ ffmpeg stream closed unexpectedly.")
-                break
+                print(f"*****FFmpeg stream for ID {stream_id} closed unexpectedly.")
+                break # Thoát vòng lặp nếu pipe bị hỏng
 
     except WebSocketDisconnect:
-        print("Client disconnected")
+        print(f"*****Client disconnected from /ws-hls/face (ID: {stream_id})")
     except Exception as e:
-        print("Error:", e)
+        print(f"*****Error in /ws-hls/face (ID: {stream_id}): {e}")
     finally:
-        try:
-            ffmpeg_proc.stdin.close()
-            ffmpeg_proc.wait()
-        except:
-            pass
+        if ffmpeg_proc:
+            try:
+                ffmpeg_proc.stdin.close()
+                ffmpeg_proc.wait(timeout=5) # Đợi FFmpeg kết thúc
+                print(f"*****FFmpeg process for ID {stream_id} terminated.")
+            except subprocess.TimeoutExpired:
+                print(f"*****FFmpeg process for ID {stream_id} did not terminate, killing it.")
+                ffmpeg_proc.kill()
+            except Exception as e:
+                print(f"*****Error while cleaning up FFmpeg process for ID {stream_id}: {e}")
+        # Bạn có thể thêm logic để xóa thư mục stream HLS của client đó nếu muốn
+        # import shutil
+        # if os.path.exists(os.path.join(HLS_DIR, stream_id)):
+        #     shutil.rmtree(os.path.join(HLS_DIR, stream_id))
 
 
 # ngrok.set_auth_token("2whbuvHI5jH1j8avQ2PMHPwpdU3_3ofa364QXXiV4invKSoaq")
