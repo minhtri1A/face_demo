@@ -84,6 +84,10 @@ async def websocket_endpoint(websocket: WebSocket):
             if frame is None:
                 continue
 
+            if data == b'PING':
+                print('*****PING!!!')
+                continue  # bỏ qua ping
+
             # Face detection
             faces = face_app.get(frame)
             for idx, face in enumerate(faces):
