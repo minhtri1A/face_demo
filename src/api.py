@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 import subprocess
 import uuid
 import json
-
+import asyncio
 
 
 app = FastAPI()
@@ -115,7 +115,6 @@ async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
     print(f"******Waiting create file m3u8")
     while not (os.path.exists(playlist_path)):
         await asyncio.sleep(0.5)  # check mỗi 500ms
-        print("⏳ Still waiting for HLS files...")
 
     print(f"*****Create success file m3u8 - send steam_id to client")
   
@@ -133,7 +132,8 @@ async def websocket_hls_streaming(websocket: WebSocket):
     stream_id = str(uuid.uuid4())
     ffmpeg_proc = None
     stream_path = os.path.join(HLS_DIR, stream_id) # Lấy đường dẫn stream_path ở đây
-    
+    countFrame = 0
+
     try:
         ffmpeg_proc = start_ffmpeg_hls_writer(stream_id)
       
@@ -145,9 +145,13 @@ async def websocket_hls_streaming(websocket: WebSocket):
         while True:
             data = await websocket.receive_bytes()
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-
+          
             if frame is None:
                 continue
+            if data == b'PING':
+                print('*****Ping!!!!!!')
+                continue  # bỏ qua ping
+
             print('*****Receive fram from client')
 
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
@@ -165,17 +169,24 @@ async def websocket_hls_streaming(websocket: WebSocket):
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
+                            
+            if frame is not None:
+                countFrame = countFrame +1
+                print('*****count frame receive', countFrame)
+                continue
 
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
               # write frame to hls
-                print('write from to hls')
+                countFrame = countFrame +1
+                print('*****Write from to hls', countFrame)
                 ffmpeg_proc.stdin.write(frame.tobytes())
+                print(f'*****is_check_create_hls: {is_check_create_hls}')
                 # check file m3u8 created
                 if is_check_create_hls == False:
                     is_check_create_hls = True
                     playlist_file_path = os.path.join(stream_path, "playlist.m3u8")
-                    wait_for_hls_ready(playlist_file_path,stream_id,websocket)
+                    asyncio.create_task(wait_for_hls_ready(playlist_file_path, stream_id, websocket))
                
             except BrokenPipeError:
                 print(f"*****FFmpeg stream for ID {stream_id} closed unexpectedly.")
