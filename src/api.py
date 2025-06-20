@@ -84,10 +84,6 @@ async def websocket_endpoint(websocket: WebSocket):
             if frame is None:
                 continue
 
-            if data == b'PING':
-                print('*****PING!!!')
-                continue  # bỏ qua ping
-
             # Face detection
             faces = face_app.get(frame)
             for idx, face in enumerate(faces):
@@ -140,23 +136,18 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
     try:
         ffmpeg_proc = start_ffmpeg_hls_writer(stream_id)
-      
-        # Gửi lại ID stream HLS cho client để họ có thể truy cập playlist.m3u8
-        # response_object = {"HLS_STREAM_ID": stream_id}
-        # await websocket.send_text(json.dumps(response_object))
 
         print(f"*****HLS stream started for ID: {stream_id}")
         while True:
             data = await websocket.receive_bytes()
+            
+            # get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-          
             if frame is None:
                 continue
-            if data == b'PING':
-                print('*****Ping!!!!!!')
-                continue  # bỏ qua ping
+           
 
-            print('*****Receive fram from client')
+            # print('*****Receive fram from client')
 
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
@@ -165,7 +156,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
             # Xử lý khuôn mặt
             faces = await asyncio.to_thread(face_app.get, frame)
             for idx, face in enumerate(faces):
-                print('*****face detection num ', idx)
+                # print('*****face detection num ', idx)
                 box = face.bbox.astype(int)
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                 for landmark in face.kps:
@@ -174,10 +165,10 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
                             
-            if frame is not None:
-                countFrame = countFrame +1
-                print('*****count frame receive', countFrame)
-                continue
+            # if frame is not None:
+            #     countFrame = countFrame +1
+            #     print('*****count frame receive', countFrame)
+            #     continue
 
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
@@ -185,7 +176,6 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 countFrame = countFrame +1
                 print('*****Write from to hls', countFrame)
                 ffmpeg_proc.stdin.write(frame.tobytes())
-                print(f'*****is_check_create_hls: {is_check_create_hls}')
                 # check file m3u8 created
                 if is_check_create_hls == False:
                     is_check_create_hls = True
