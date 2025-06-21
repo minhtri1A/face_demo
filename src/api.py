@@ -141,7 +141,13 @@ async def websocket_hls_streaming(websocket: WebSocket):
         print(f"*****HLS stream started for ID: {stream_id}")
         while True:
             data = await websocket.receive_bytes()
-                        
+
+            #done
+            if data == b"DONE":
+                print('*****Done!!!')
+                ffmpeg_proc.stdin.close()
+                ffmpeg_proc.wait(timeout=5)
+
             # get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
