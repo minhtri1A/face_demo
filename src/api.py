@@ -54,6 +54,7 @@ def start_ffmpeg_hls_writer(stream_id: str):
         "-preset", "ultrafast",
         "-f", "hls",
         "-hls_time", "2",
+        "-force_key_frames", "expr:gte(t,n_forced*2)",
         "-hls_list_size", "5",
         "-hls_flags", "delete_segments",
         os.path.join(stream_path, "playlist.m3u8")
@@ -140,15 +141,12 @@ async def websocket_hls_streaming(websocket: WebSocket):
         print(f"*****HLS stream started for ID: {stream_id}")
         while True:
             data = await websocket.receive_bytes()
-            
+                        
             # get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
                 continue
            
-
-            # print('*****Receive fram from client')
-
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
                 frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
@@ -165,11 +163,6 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
                             
-            # if frame is not None:
-            #     countFrame = countFrame +1
-            #     print('*****count frame receive', countFrame)
-            #     continue
-
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
               # write frame to hls
@@ -191,6 +184,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
     except Exception as e:
         print(f"*****Error in /ws-hls/face (ID: {stream_id}): {e}")
     finally:
+        print('*****finally')
         if ffmpeg_proc:
             try:
                 ffmpeg_proc.stdin.close()
@@ -202,9 +196,9 @@ async def websocket_hls_streaming(websocket: WebSocket):
             except Exception as e:
                 print(f"*****Error while cleaning up FFmpeg process for ID {stream_id}: {e}")
         # Bạn có thể thêm logic để xóa thư mục stream HLS của client đó nếu muốn
-        # import shutil
-        # if os.path.exists(os.path.join(HLS_DIR, stream_id)):
-        #     shutil.rmtree(os.path.join(HLS_DIR, stream_id))
+        import shutil
+        if os.path.exists(stream_path):
+            shutil.rmtree(stream_path)
 
 
 # ngrok.set_auth_token("2whbuvHI5jH1j8avQ2PMHPwpdU3_3ofa364QXXiV4invKSoaq")
