@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import base64
 import asyncio
-from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi import FastAPI, WebSocket, HTTPException, Form, Depends, UploadFile, File
 from pydantic import BaseModel
 from insightface.app import FaceAnalysis
 from starlette.websockets import WebSocketDisconnect
@@ -20,6 +20,8 @@ import uuid
 import json
 import asyncio
 import time
+from typing import List
+import shutil
 
 
 app = FastAPI()
@@ -92,8 +94,8 @@ def start_ffmpeg_hls_writer(stream_id: str):
 def save_facebank_append(new_embeddings: np.ndarray, new_names: list):
     # Nếu file đã tồn tại → load
     if os.path.exists("facebank_embeddings.npy") and os.path.exists("facebank_names.npy"):
-        old_embeddings = np.load("facebank_embeddings.npy")
-        old_names = np.load("facebank_names.npy")
+        old_embeddings = np.load(f"{FACEBANK_DIR}/facebank_embeddings.npy")
+        old_names = np.load(f"{FACEBANK_DIR}/facebank_names.npy")
 
         all_embeddings = np.concatenate([old_embeddings, new_embeddings], axis=0)
         all_names = np.concatenate([old_names, new_names], axis=0)
@@ -102,8 +104,8 @@ def save_facebank_append(new_embeddings: np.ndarray, new_names: list):
         all_names = np.array(new_names)
 
     # Ghi lại file đã nối
-    np.save("facebank_embeddings.npy", all_embeddings)
-    np.save("facebank_names.npy", all_names)
+    np.save(f"{FACEBANK_DIR}/facebank_embeddings.npy", all_embeddings)
+    np.save(f"{FACEBANK_DIR}/facebank_names.npy", all_names)
 
 print('*****Start api')
 
@@ -147,22 +149,20 @@ async def websocket_endpoint(websocket: WebSocket):
         print("Client disconnected")
 
 # Save user API
-@app.post("/save-face-user")
+@app.post("/save-user-to-facebank")
 async def save_user_info(
     user: User = Depends(User.as_form),
     files: List[UploadFile] = File(...)
 ):
 
-    print('****user data ', user_json)
-    print('****file data ', user)
-
-    return
+    print('****user data ', user)
+    print('****file data ', files)
 
     names = []
     embeddings = []
 
     # create folder by user.id
-    user_folder = os.path.join(f'{UPLOAD_DIR}/images', user.id)
+    user_folder = os.path.join(f'{FACEBANK_DIR}/images', user.id)
     os.makedirs(user_folder, exist_ok=True)
 
     # save image & embedding
@@ -170,15 +170,11 @@ async def save_user_info(
 
     for file in files:
         iamgename = f"{len(os.listdir(user_folder)) + 1}.jpg"
-        iamge_path = os.path.join(user_folder, iamgename)
+        image_path = os.path.join(user_folder, iamgename)
 
         # Save image
-        with open(iamge_path, "wb") as buffer:
+        with open(image_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-
-            img = cv2.imread(file.file)
-            if img is None:
-                continue
 
         # Read image cv2
         img = cv2.imread(image_path)
@@ -187,7 +183,7 @@ async def save_user_info(
             continue
 
         # Get face embedding
-        faces = app.get(img)
+        faces = face_app.get(img)
         if not faces:
             print(f"[WARN] Không tìm thấy khuôn mặt: {image_path}")
             continue
@@ -198,8 +194,8 @@ async def save_user_info(
     if embs:
         mean_emb = np.mean(embs, axis=0)
         embeddings.append(mean_emb)
-        names.append(user_id)
-        print(f"[OK] Thêm vào facebank: {user_id} ({len(embs)} ảnh)")
+        names.append(user)
+        print(f"[OK] Thêm vào facebank: {names} ({len(embs)} ảnh)")
 
     #save info
     info_file = os.path.join(user_folder, "info.txt")
@@ -209,8 +205,13 @@ async def save_user_info(
     #save image embedding to facebank
     save_facebank_append(np.array(embeddings), names)
 
-    return f"Lưu thông tin user {user.name} thành công!!!"
-        
+    return f"*****Lưu thông tin user {user.name} thành công!!!"
+
+@app.get("/load-user-from-facebank")
+async def load_user_from_facebank():
+  names = np.load(f"{FACEBANK_DIR}/facebank_names.npy", allow_pickle=True)
+  print('names facebak ', names)
+  return 'hihi'      
 
 
 # hls
