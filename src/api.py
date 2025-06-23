@@ -9,6 +9,7 @@ import numpy as np
 import base64
 import asyncio
 from fastapi import FastAPI, WebSocket, HTTPException
+from pydantic import BaseModel
 from insightface.app import FaceAnalysis
 from starlette.websockets import WebSocketDisconnect
 from pyngrok import ngrok
@@ -18,6 +19,7 @@ import subprocess
 import uuid
 import json
 import asyncio
+import time
 
 
 app = FastAPI()
@@ -37,7 +39,30 @@ os.makedirs(HLS_DIR, exist_ok=True)
 # Mount thư mục /hls_streams
 app.mount(f"/{HLS_DIR}", StaticFiles(directory=HLS_DIR), name="hls_streams")
 
+#-----init
 
+face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+face_app.prepare(ctx_id=0)
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FACEBANK_DIR = os.path.join(SCRIPT_DIR, "facebank") 
+
+class User(BaseModel):
+    id: str
+    name: str
+    email: str = None
+
+    @classmethod
+    def as_form(
+        cls,
+        id: str = Form(...),
+        name: str = Form(...),
+        email: str = Form(None),
+    ):
+        return cls(id=id, name=name, email=email) 
+
+
+# ---- healper
 # Hàm khởi tạo ffmpeg để ghi HLS cho mỗi client
 def start_ffmpeg_hls_writer(stream_id: str):
     stream_path = os.path.join(HLS_DIR, stream_id)
@@ -61,15 +86,28 @@ def start_ffmpeg_hls_writer(stream_id: str):
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
-# Khởi tạo ffmpeg từ đầu chương trình
-# ffmpeg_proc = start_ffmpeg_hls_writer()
+# Save face
+
+# Save facebank
+def save_facebank_append(new_embeddings: np.ndarray, new_names: list):
+    # Nếu file đã tồn tại → load
+    if os.path.exists("facebank_embeddings.npy") and os.path.exists("facebank_names.npy"):
+        old_embeddings = np.load("facebank_embeddings.npy")
+        old_names = np.load("facebank_names.npy")
+
+        all_embeddings = np.concatenate([old_embeddings, new_embeddings], axis=0)
+        all_names = np.concatenate([old_names, new_names], axis=0)
+    else:
+        all_embeddings = new_embeddings
+        all_names = np.array(new_names)
+
+    # Ghi lại file đã nối
+    np.save("facebank_embeddings.npy", all_embeddings)
+    np.save("facebank_names.npy", all_names)
 
 print('*****Start api')
 
-# --- Khởi tạo insightface ---
-face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
-face_app.prepare(ctx_id=0)
-
+# --- API
 @app.websocket("/ws/face")
 async def websocket_endpoint(websocket: WebSocket):
     print('start socket')
@@ -107,6 +145,72 @@ async def websocket_endpoint(websocket: WebSocket):
             print('send to client')
     except WebSocketDisconnect:
         print("Client disconnected")
+
+# Save user API
+@app.post("/save-face-user")
+async def save_user_info(
+    user: User = Depends(User.as_form),
+    files: List[UploadFile] = File(...)
+):
+
+    print('****user data ', user_json)
+    print('****file data ', user)
+
+    return
+
+    names = []
+    embeddings = []
+
+    # create folder by user.id
+    user_folder = os.path.join(f'{UPLOAD_DIR}/images', user.id)
+    os.makedirs(user_folder, exist_ok=True)
+
+    # save image & embedding
+    embs = []
+
+    for file in files:
+        iamgename = f"{len(os.listdir(user_folder)) + 1}.jpg"
+        iamge_path = os.path.join(user_folder, iamgename)
+
+        # Save image
+        with open(iamge_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+            img = cv2.imread(file.file)
+            if img is None:
+                continue
+
+        # Read image cv2
+        img = cv2.imread(image_path)
+        if img is None:
+            print(f"[WARN] Không đọc được ảnh: {image_path}")
+            continue
+
+        # Get face embedding
+        faces = app.get(img)
+        if not faces:
+            print(f"[WARN] Không tìm thấy khuôn mặt: {image_path}")
+            continue
+        emb = faces[0].embedding
+        embs.append(emb)
+
+    # Check embedding
+    if embs:
+        mean_emb = np.mean(embs, axis=0)
+        embeddings.append(mean_emb)
+        names.append(user_id)
+        print(f"[OK] Thêm vào facebank: {user_id} ({len(embs)} ảnh)")
+
+    #save info
+    info_file = os.path.join(user_folder, "info.txt")
+    with open(info_file, "w", encoding="utf-8") as f:
+        json.dump(user.dict(), f, ensure_ascii=False, indent=4)
+
+    #save image embedding to facebank
+    save_facebank_append(np.array(embeddings), names)
+
+    return f"Lưu thông tin user {user.name} thành công!!!"
+        
 
 
 # hls
@@ -148,17 +252,18 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 ffmpeg_proc.stdin.close()
                 ffmpeg_proc.wait(timeout=5)
 
-            # get frame
+            # Get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
                 continue
-           
+            
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
                 frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
-
+               
             # Xử lý khuôn mặt
             faces = await asyncio.to_thread(face_app.get, frame)
+            
             for idx, face in enumerate(faces):
                 # print('*****face detection num ', idx)
                 box = face.bbox.astype(int)
@@ -168,6 +273,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
+           
                             
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
@@ -175,6 +281,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 countFrame = countFrame +1
                 print('*****Write from to hls', countFrame)
                 ffmpeg_proc.stdin.write(frame.tobytes())
+
                 # check file m3u8 created
                 if is_check_create_hls == False:
                     is_check_create_hls = True
