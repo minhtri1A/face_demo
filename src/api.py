@@ -49,6 +49,8 @@ face_app.prepare(ctx_id=0)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FACEBANK_DIR = os.path.join(SCRIPT_DIR, "facebank") 
+FACEBANK_EMBEDDINGS_DIR = f"{FACEBANK_DIR}/facebank_embeddings.npy"
+FACEBANK_NAMES_DIR = f"{FACEBANK_DIR}/facebank_names.npy"
 FACEBANK_CACHE = {}
 
 
@@ -96,8 +98,8 @@ def get_facebank():
     global FACEBANK_CACHE
 
     if not FACEBANK_CACHE:
-        FACEBANK_CACHE["embeddings"] = np.load(f"{FACEBANK_DIR}/facebank_embeddings.npy")
-        FACEBANK_CACHE["names"] = np.load(f"{FACEBANK_DIR}/facebank_names.npy", allow_pickle=True)
+        FACEBANK_CACHE["embeddings"] = np.load(FACEBANK_EMBEDDINGS_DIR)
+        FACEBANK_CACHE["names"] = np.load(FACEBANK_NAMES_DIR, allow_pickle=True)
 
     return FACEBANK_CACHE["embeddings"], FACEBANK_CACHE["names"]
 
@@ -105,7 +107,7 @@ def reset_facebank_cache():
     global FACEBANK_CACHE
     FACEBANK_CACHE.clear()
 
-# Get user info best match from facebak_embeddings
+# Get user info best match from facebank_embeddings
 def find_best_match(embedding):
     facebank_embeddings, names = get_facebank()
     similarities = np.dot(facebank_embeddings, embedding) / (
@@ -114,27 +116,80 @@ def find_best_match(embedding):
     idx = np.argmax(similarities)
     return idx, similarities[idx], names[idx]
 
+# Get user info best match multiple embebding from facebank_embeddings
+def find_best_match_batch(embeddings: np.ndarray, threshold: float = 0.4):
+    """
+    So sánh nhiều embedding với facebank để tìm người giống nhất.
+
+    Args:
+        embeddings (np.ndarray): Mảng shape (N, 512) chứa embedding của nhiều khuôn mặt.
+        threshold (float): Ngưỡng similarity để chấp nhận nhận diện.
+
+    Returns:
+        List[dict]: Danh sách kết quả. Mỗi kết quả là dict:
+            {
+                "index": index trong facebank,
+                "score": cosine similarity,
+                "name": tên người hoặc "unknown"
+            }
+    """
+    facebank_embeddings, facebank_names = get_facebank()
+
+    # Tính cosine similarity (N, M): N là số khuôn mặt, M là số người trong facebank
+    sim_matrix = np.dot(embeddings, facebank_embeddings.T) / (
+        np.linalg.norm(embeddings, axis=1, keepdims=True) * 
+        np.linalg.norm(facebank_embeddings, axis=1) + 1e-6
+    )
+
+    best_idxs = np.argmax(sim_matrix, axis=1)
+    best_scores = np.max(sim_matrix, axis=1)
+
+    results = []
+    for i in range(len(embeddings)):
+        idx = best_idxs[i]
+        score = best_scores[i]
+        name = facebank_names[idx]["name"] if score >= threshold else "unknown"
+        results.append({
+            "index": idx,
+            "score": float(score),
+            "name": name
+        })
+    
+    return results
+
 # Save facebank
 def save_facebank_append(new_embeddings: np.ndarray, new_names: list):
     # check exists file
-    if os.path.exists("facebank_embeddings.npy") and os.path.exists("facebank_names.npy"):
+    if os.path.exists(FACEBANK_EMBEDDINGS_DIR) and os.path.exists(FACEBANK_NAMES_DIR):
         old_embeddings, old_names = get_facebank()
         all_embeddings = np.concatenate([old_embeddings, new_embeddings], axis=0)
-        all_names = np.concatenate([old_names, new_names], axis=0)
+        all_names = np.concatenate([old_names, new_names], axis=0).astype(object)
     else:
         all_embeddings = new_embeddings
         all_names = np.array(new_names)
 
     # save file
-    np.save(f"{FACEBANK_DIR}/facebank_embeddings.npy", all_embeddings)
-    np.save(f"{FACEBANK_DIR}/facebank_names.npy", all_names)
+    np.save(FACEBANK_EMBEDDINGS_DIR, all_embeddings)
+    np.save(FACEBANK_NAMES_DIR, all_names)
 
     # reset facebank
     reset_facebank_cache()
 
+#Check create m3u8
+async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
+    print(f"******Waiting create file m3u8")
+    while not (os.path.exists(playlist_path)):
+        await asyncio.sleep(0.5)  # check mỗi 500ms
+
+    print(f"*****Create success file m3u8 - send steam_id to client")
+  
+    response_object = {"HLS_STREAM_ID": stream_id}
+    await websocket.send_text(json.dumps(response_object))
+
 print('*****Start api')
 
-# --- API
+# ------------- API
+#Face demo API
 @app.websocket("/ws/face")
 async def websocket_endpoint(websocket: WebSocket):
     print('start socket')
@@ -152,6 +207,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Face detection
             faces = face_app.get(frame)
+
             for idx, face in enumerate(faces):
                 print('face ', idx)
                 box = face.bbox.astype(int)
@@ -234,25 +290,12 @@ async def save_user_info(
 
 @app.get("/load-user-from-facebank")
 async def load_user_from_facebank():
-  names = np.load(f"{FACEBANK_DIR}/facebank_names.npy", allow_pickle=True)
+  names = np.load(FACEBANK_NAMES_DIR, allow_pickle=True)
   print('names facebak ', names)
   return 'hihi'      
 
 
-# hls
-
-
-async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
-    print(f"******Waiting create file m3u8")
-    while not (os.path.exists(playlist_path)):
-        await asyncio.sleep(0.5)  # check mỗi 500ms
-
-    print(f"*****Create success file m3u8 - send steam_id to client")
-  
-    response_object = {"HLS_STREAM_ID": stream_id}
-    await websocket.send_text(json.dumps(response_object))
-
-
+# Face with HLS API
 @app.websocket("/ws-hls/face")
 async def websocket_hls_streaming(websocket: WebSocket):
     print('*****WebSocket /ws-hls/face connected.')
@@ -270,6 +313,8 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
         print(f"*****HLS stream started for ID: {stream_id}")
         while True:
+            
+
             data = await websocket.receive_bytes()
 
             #done
@@ -277,7 +322,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 print('*****Done!!!')
                 ffmpeg_proc.stdin.close()
                 ffmpeg_proc.wait(timeout=5)
-
+            
             # Get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
@@ -286,20 +331,36 @@ async def websocket_hls_streaming(websocket: WebSocket):
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
                 frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
-               
-            # Xử lý khuôn mặt
+            start1 = time.perf_counter()   
+
+            # Face detection
             faces = await asyncio.to_thread(face_app.get, frame)
-            
+
+            # Face recognition
+            #--Gộp tất cả embedding của các face
+            embs = np.stack([face.embedding for face in faces], axis=0)
+            #--Gọi hàm batch
+            results = find_best_match_batch(embs, threshold=0.4)
+
+
             for idx, face in enumerate(faces):
                 # print('*****face detection num ', idx)
                 box = face.bbox.astype(int)
+                embs = face.embedding
+                face_name = results[idx]["name"]
+                score = results[idx]["score"]
+                print(f'score:{score} - index: {idx} - face_name_recognition: {face_name}')
+                # Draw rectangle
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
+                # Draw landmark
                 for landmark in face.kps:
                     x, y = map(int, landmark)
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
-                cv2.putText(frame, str(idx), (box[0], box[1]-10),
+                # Draw text
+                cv2.putText(frame, f"{face_name} ({score:.2f})", (box[0], box[1]-10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
-           
+            end1 = time.perf_counter()
+            print("*****Thời gian chạy 1:", end1 - start1, "giây")
                             
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
@@ -307,7 +368,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 countFrame = countFrame +1
                 print('*****Write from to hls', countFrame)
                 ffmpeg_proc.stdin.write(frame.tobytes())
-
+               
                 # check file m3u8 created
                 if is_check_create_hls == False:
                     is_check_create_hls = True
@@ -334,10 +395,10 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 ffmpeg_proc.kill()
             except Exception as e:
                 print(f"*****Error while cleaning up FFmpeg process for ID {stream_id}: {e}")
-        # Bạn có thể thêm logic để xóa thư mục stream HLS của client đó nếu muốn
-        import shutil
-        if os.path.exists(stream_path):
-            shutil.rmtree(stream_path)
+        # clear hls stream
+        # import shutil
+        # if os.path.exists(stream_path):
+        #     shutil.rmtree(stream_path)
 
 
 # ngrok.set_auth_token("2whbuvHI5jH1j8avQ2PMHPwpdU3_3ofa364QXXiV4invKSoaq")
