@@ -22,6 +22,7 @@ import asyncio
 import time
 from typing import List
 import shutil
+from numpy.linalg import norm
 
 
 app = FastAPI()
@@ -48,6 +49,8 @@ face_app.prepare(ctx_id=0)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FACEBANK_DIR = os.path.join(SCRIPT_DIR, "facebank") 
+FACEBANK_CACHE = {}
+
 
 class User(BaseModel):
     id: str
@@ -65,7 +68,7 @@ class User(BaseModel):
 
 
 # ---- healper
-# Hàm khởi tạo ffmpeg để ghi HLS cho mỗi client
+# Create ffmpeg to write hls
 def start_ffmpeg_hls_writer(stream_id: str):
     stream_path = os.path.join(HLS_DIR, stream_id)
     os.makedirs(stream_path, exist_ok=True)
@@ -74,7 +77,7 @@ def start_ffmpeg_hls_writer(stream_id: str):
         "-y",
         "-f", "rawvideo",
         "-pix_fmt", "bgr24",
-        "-s", "640x480",  # Đảm bảo khớp với kích thước khung hình từ client
+        "-s", "640x480",
         "-r", "15",
         "-i", "-",
         "-c:v", "libx264",
@@ -88,24 +91,46 @@ def start_ffmpeg_hls_writer(stream_id: str):
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
-# Save face
+# facebank
+def get_facebank():
+    global FACEBANK_CACHE
+
+    if not FACEBANK_CACHE:
+        FACEBANK_CACHE["embeddings"] = np.load(f"{FACEBANK_DIR}/facebank_embeddings.npy")
+        FACEBANK_CACHE["names"] = np.load(f"{FACEBANK_DIR}/facebank_names.npy", allow_pickle=True)
+
+    return FACEBANK_CACHE["embeddings"], FACEBANK_CACHE["names"]
+
+def reset_facebank_cache():
+    global FACEBANK_CACHE
+    FACEBANK_CACHE.clear()
+
+# Get user info best match from facebak_embeddings
+def find_best_match(embedding):
+    facebank_embeddings, names = get_facebank()
+    similarities = np.dot(facebank_embeddings, embedding) / (
+        norm(facebank_embeddings, axis=1) * norm(embedding) + 1e-6
+    )
+    idx = np.argmax(similarities)
+    return idx, similarities[idx], names[idx]
 
 # Save facebank
 def save_facebank_append(new_embeddings: np.ndarray, new_names: list):
-    # Nếu file đã tồn tại → load
+    # check exists file
     if os.path.exists("facebank_embeddings.npy") and os.path.exists("facebank_names.npy"):
-        old_embeddings = np.load(f"{FACEBANK_DIR}/facebank_embeddings.npy")
-        old_names = np.load(f"{FACEBANK_DIR}/facebank_names.npy")
-
+        old_embeddings, old_names = get_facebank()
         all_embeddings = np.concatenate([old_embeddings, new_embeddings], axis=0)
         all_names = np.concatenate([old_names, new_names], axis=0)
     else:
         all_embeddings = new_embeddings
         all_names = np.array(new_names)
 
-    # Ghi lại file đã nối
+    # save file
     np.save(f"{FACEBANK_DIR}/facebank_embeddings.npy", all_embeddings)
     np.save(f"{FACEBANK_DIR}/facebank_names.npy", all_names)
+
+    # reset facebank
+    reset_facebank_cache()
 
 print('*****Start api')
 
