@@ -8,13 +8,15 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Form, Depends, UploadFile, File
 
 from src.models.user import User
-from src.services.face_recognition import FaceRecognitionService, face_app
+from src.services.face_recognition import FaceRecognitionService
 from src.core.config import FACEBANK_DIR
+
+print('*****start routes')
 
 router = APIRouter()
 
 # Instantiate the service
-face_recognition_service = FaceRecognitionService(face_app)
+face_recognition_service = FaceRecognitionService()
 
 @router.post("/save-user-to-facebank")
 async def save_user_info(

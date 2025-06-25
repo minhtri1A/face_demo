@@ -8,19 +8,27 @@ from src.core.config import FACEBANK_EMBEDDINGS_DIR, FACEBANK_NAMES_DIR
 
 # insightFace: CUDAExecutionProvider CPUExecutionProvider
 # This should be initialized once at startup
-face_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider'], allowed_modules=["detection", "recognition"])
-face_app.prepare(ctx_id=0)
+
+print('*****start face serivce ', FACEBANK_EMBEDDINGS_DIR)
 
 FACEBANK_CACHE = {}
 
 class FaceRecognitionService:
-    def __init__(self, face_analysis_app: FaceAnalysis):
-        self.face_analysis_app = face_analysis_app
+    def __init__(self):
+        self.face_analysis_app = FaceAnalysis(
+            name='buffalo_l',
+            providers=['CPUExecutionProvider'],
+            allowed_modules=["detection", "recognition"]
+        )
+        self.face_analysis_app.prepare(ctx_id=0)
         self._load_facebank_cache()
+        
 
     def _load_facebank_cache(self):
         global FACEBANK_CACHE
+        print('*****load cache out')
         if os.path.exists(FACEBANK_EMBEDDINGS_DIR) and os.path.exists(FACEBANK_NAMES_DIR):
+            print('*****load cache in')
             FACEBANK_CACHE["embeddings"] = np.load(FACEBANK_EMBEDDINGS_DIR)
             FACEBANK_CACHE["names"] = np.load(FACEBANK_NAMES_DIR, allow_pickle=True)
         else:
