@@ -2,6 +2,11 @@ import os
 os.environ.pop("MPLBACKEND", None)
 import matplotlib
 matplotlib.use("Agg")
+import sys
+
+project_root = '/content/face_demo' # Điều chỉnh nếu project ở đâu đó khác
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +16,7 @@ import uvicorn
 from src.api.routes import router as http_router
 from src.api.websockets import router as websocket_router
 from src.core.config import HLS_DIR
+print('*****start api')
 
 app = FastAPI()
 
@@ -21,6 +27,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Thư mục chứa các stream HLS riêng biệt
 os.makedirs(HLS_DIR, exist_ok=True)
