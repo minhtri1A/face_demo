@@ -2,11 +2,10 @@ import os
 os.environ.pop("MPLBACKEND", None)
 import matplotlib
 matplotlib.use("Agg")
-import sys
 
-project_root = '/content/face_demo' # Điều chỉnh nếu project ở đâu đó khác
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import sys
+sys.path.append('/content/face_demo')
+print("🛣 sys.path:", sys.path)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
