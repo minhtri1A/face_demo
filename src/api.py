@@ -44,7 +44,7 @@ app.mount(f"/{HLS_DIR}", StaticFiles(directory=HLS_DIR), name="hls_streams")
 
 #-----init
 
-face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'], allowed_modules=["detection", "recognition"])
 face_app.prepare(ctx_id=0)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -116,7 +116,7 @@ def find_best_match(embedding):
     idx = np.argmax(similarities)
     return idx, similarities[idx], names[idx]
 
-# Get user info best match multiple embebding from facebank_embeddings
+# Get list user info best match from facebank_embeddings
 def find_best_match_batch(embeddings: np.ndarray, threshold: float = 0.4):
     """
     So sánh nhiều embedding với facebank để tìm người giống nhất.
@@ -148,7 +148,7 @@ def find_best_match_batch(embeddings: np.ndarray, threshold: float = 0.4):
     for i in range(len(embeddings)):
         idx = best_idxs[i]
         score = best_scores[i]
-        name = facebank_names[idx]["name"] if score >= threshold else "unknown"
+        name = facebank_names[idx].name if score >= threshold else "unknown"
         results.append({
             "index": idx,
             "score": float(score),
@@ -218,7 +218,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
                
                 cv2.putText(frame, str(idx), (box[0], box[1]-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1)
 
             # Encode lại frame thành JPEG để gửi về client
             _, buffer = cv2.imencode('.jpg', frame)
@@ -322,7 +322,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 print('*****Done!!!')
                 ffmpeg_proc.stdin.close()
                 ffmpeg_proc.wait(timeout=5)
-            
+            start1 = time.perf_counter()   
             # Get frame
             frame = await asyncio.to_thread(cv2.imdecode, np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
             if frame is None:
@@ -331,18 +331,20 @@ async def websocket_hls_streaming(websocket: WebSocket):
             # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
             if frame.shape[1] != 640 or frame.shape[0] != 480:
                 frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
-            start1 = time.perf_counter()   
+           
 
-            # Face detection
+            # Face detection + embedding
+            start2 = time.perf_counter()   
             faces = await asyncio.to_thread(face_app.get, frame)
+            end2 = time.perf_counter()
+            print("*****Thời gian chạy 2:", end2 - start2, "giây")
 
             # Face recognition
             #--Gộp tất cả embedding của các face
             embs = np.stack([face.embedding for face in faces], axis=0)
             #--Gọi hàm batch
             results = find_best_match_batch(embs, threshold=0.4)
-
-
+            
             for idx, face in enumerate(faces):
                 # print('*****face detection num ', idx)
                 box = face.bbox.astype(int)
@@ -358,9 +360,8 @@ async def websocket_hls_streaming(websocket: WebSocket):
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
                 # Draw text
                 cv2.putText(frame, f"{face_name} ({score:.2f})", (box[0], box[1]-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 0), 1)
-            end1 = time.perf_counter()
-            print("*****Thời gian chạy 1:", end1 - start1, "giây")
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 2, cv2.LINE_AA)
+           
                             
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
@@ -368,13 +369,14 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 countFrame = countFrame +1
                 print('*****Write from to hls', countFrame)
                 ffmpeg_proc.stdin.write(frame.tobytes())
-               
+
                 # check file m3u8 created
                 if is_check_create_hls == False:
                     is_check_create_hls = True
                     playlist_file_path = os.path.join(stream_path, "playlist.m3u8")
                     asyncio.create_task(wait_for_hls_ready(playlist_file_path, stream_id, websocket))
-               
+                end1 = time.perf_counter()
+                print("*****Thời gian chạy 1:", end1 - start1, "giây")
             except BrokenPipeError:
                 print(f"*****FFmpeg stream for ID {stream_id} closed unexpectedly.")
                 break # Thoát vòng lặp nếu pipe bị hỏng
