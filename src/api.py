@@ -23,6 +23,7 @@ import time
 from typing import List
 import shutil
 from numpy.linalg import norm
+import onnxruntime as ort
 
 
 app = FastAPI()
@@ -42,9 +43,12 @@ os.makedirs(HLS_DIR, exist_ok=True)
 # Mount thư mục /hls_streams
 app.mount(f"/{HLS_DIR}", StaticFiles(directory=HLS_DIR), name="hls_streams")
 
-#-----init
+print('*****check ort',ort.get_available_providers())
 
-face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'], allowed_modules=["detection", "recognition"])
+
+#-----init
+#insightFace: CUDAExecutionProvider CPUExecutionProvider
+face_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider'], allowed_modules=["detection", "recognition"])
 face_app.prepare(ctx_id=0)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -351,7 +355,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 embs = face.embedding
                 face_name = results[idx]["name"]
                 score = results[idx]["score"]
-                print(f'score:{score} - index: {idx} - face_name_recognition: {face_name}')
+                # print(f'score:{score} - index: {idx} - face_name_recognition: {face_name}')
                 # Draw rectangle
                 cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
                 # Draw landmark
@@ -360,7 +364,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
                 # Draw text
                 cv2.putText(frame, f"{face_name} ({score:.2f})", (box[0], box[1]-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 2, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
            
                             
             # Gửi frame vào ffmpeg để tạo stream HLS
