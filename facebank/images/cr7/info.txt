@@ -1,5 +1,0 @@
-{
-    "id": "cr7",
-    "name": "ronaldo",
-    "email": "ronaldo@gmail.com"
-}

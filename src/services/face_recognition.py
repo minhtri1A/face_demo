@@ -37,8 +37,12 @@ class FaceRecognitionService:
             print("[INFO] Facebank files not found. Initializing empty facebank.")
 
     def get_facebank(self):
-        # Refresh cache if necessary or just return current
-        if not FACEBANK_CACHE.get("embeddings") or not FACEBANK_CACHE.get("names"):
+        embeddings = FACEBANK_CACHE.get("embeddings")
+        names = FACEBANK_CACHE.get("names")
+        if (
+            embeddings is None or not isinstance(embeddings, np.ndarray) or embeddings.size == 0
+            or names is None or len(names) == 0
+        ):
             self._load_facebank_cache()
         return FACEBANK_CACHE["embeddings"], FACEBANK_CACHE["names"]
 

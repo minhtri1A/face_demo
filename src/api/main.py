@@ -32,7 +32,7 @@ app.add_middleware(
 os.makedirs(HLS_DIR, exist_ok=True)
 
 # Mount thư mục /hls_streams
-app.mount(f"/{HLS_DIR}", StaticFiles(directory=HLS_DIR), name="hls_streams")
+app.mount(f"/hls_streams", StaticFiles(directory=HLS_DIR), name="hls_streams")
 
 # Include routers
 app.include_router(http_router)

@@ -17,6 +17,7 @@ router = APIRouter()
 
 # Instantiate the service
 face_recognition_service = FaceRecognitionService()
+face_app = face_recognition_service.face_analysis_app
 
 @router.post("/save-user-to-facebank")
 async def save_user_info(
