@@ -5,6 +5,7 @@ import onnxruntime as ort
 
 from insightface.app import FaceAnalysis
 from src.core.config import FACEBANK_EMBEDDINGS_DIR, FACEBANK_NAMES_DIR
+from src.core.utils import start_ffmpeg_hls_writer, wait_for_hls_ready
 
 # insightFace: CUDAExecutionProvider CPUExecutionProvider
 # This should be initialized once at startup
@@ -23,7 +24,7 @@ class FaceRecognitionService:
         self.face_analysis_app.prepare(ctx_id=0)
         self._load_facebank_cache()
         
-
+    
     def _load_facebank_cache(self):
         global FACEBANK_CACHE
         print('*****load cache out')

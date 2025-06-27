@@ -67,11 +67,10 @@ async def websocket_hls_streaming(websocket: WebSocket):
     print('*****WebSocket /ws-hls/face connected.')
     await websocket.accept()
 
-    # Tạo một ID duy nhất cho stream HLS này
     is_check_create_hls = False
     stream_id = str(uuid.uuid4())
     ffmpeg_proc = None
-    stream_path = os.path.join(HLS_DIR, stream_id) # Lấy đường dẫn stream_path ở đây
+    stream_path = os.path.join(HLS_DIR, stream_id) # stream_path
     countFrame = 0
 
     try:
