@@ -20,9 +20,17 @@ FACEBANK_CACHE = {}
 
 class FaceRecognitionService:
     def __init__(self):
+        # Check gpu
+        providers = ort.get_available_providers()
+        if 'CUDAExecutionProvider' in providers:
+            selected_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            selected_providers = ['CPUExecutionProvider']
+            
+        # Khởi tạo FaceAnalysis với provider phù hợp
         self.face_analysis_app = FaceAnalysis(
             name='buffalo_l',
-            providers=['CPUExecutionProvider'],
+            providers=selected_providers,
             allowed_modules=["detection", "recognition"]
         )
         self.face_analysis_app.prepare(ctx_id=0)
