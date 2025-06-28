@@ -10,7 +10,7 @@ import time
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from src.core.utils import start_ffmpeg_hls_writer, wait_for_hls_ready
+from src.core.utils import start_ffmpeg_hls_writer, wait_for_hls_ready_socket
 from src.core.config import HLS_DIR
 from src.services.face_recognition import FaceRecognitionService
 import subprocess
@@ -93,7 +93,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 continue         
 
             # Face detection 
-            frame = face_app.process_face_frame(frame)
+            frame = await face_app.process_face_frame(frame)
            
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
@@ -105,7 +105,7 @@ async def websocket_hls_streaming(websocket: WebSocket):
                 if is_check_create_hls == False:
                     is_check_create_hls = True
                     playlist_file_path = os.path.join(stream_path, "playlist.m3u8")
-                    asyncio.create_task(wait_for_hls_ready(playlist_file_path, stream_id, websocket))
+                    asyncio.create_task(wait_for_hls_ready_socket(playlist_file_path, stream_id, websocket))
                 end1 = time.perf_counter()
                 print("*****Thời gian chạy 1:", end1 - start1, "giây")
             except BrokenPipeError:

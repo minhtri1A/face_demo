@@ -2,14 +2,13 @@ import cv2
 import asyncio
 import numpy as np
 import time
-from src.core.utils import start_ffmpeg_hls_writer, wait_for_hls_ready
+from src.core.utils import start_ffmpeg_hls_writer
 
 class RTSPCameraReader:
-    def __init__(self, rtsp_url: str, stream_id: str, face_recognition_service, hls_writer_func):
+    def __init__(self, rtsp_url: str, stream_id: str, face_recognition_service, ):
         self.rtsp_url = rtsp_url
         self.stream_id = stream_id
         self.face_recognition_service = face_recognition_service
-        self.hls_writer_func = hls_writer_func # Hàm để khởi tạo ffmpeg process
         self.video_capture = None
         self.running = False
         self.ffmpeg_process = None
@@ -44,7 +43,7 @@ class RTSPCameraReader:
                 continue
 
             # Face detection 
-            frame = self.face_recognition_service.process_face_frame(frame)
+            frame = await self.face_recognition_service.process_face_frame(frame)
             
             #Wirte frame to hls
             try:

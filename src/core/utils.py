@@ -28,8 +28,8 @@ def start_ffmpeg_hls_writer(stream_id: str):
     ]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
-#Check create m3u8
-async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
+#Check create m3u8 socket
+async def wait_for_hls_ready_socket(playlist_path: str, stream_id: str, websocket):
     print(f"******Waiting create file m3u8")
     while not (os.path.exists(playlist_path)):
         await asyncio.sleep(0.5)  # check mỗi 500ms
@@ -38,3 +38,16 @@ async def wait_for_hls_ready(playlist_path: str, stream_id: str, websocket):
   
     response_object = {"HLS_STREAM_ID": stream_id}
     await websocket.send_text(json.dumps(response_object))
+
+async def wait_for_hls_ready_rtsp(playlist_path: str, stream_id: str):
+    print(f"******Waiting create file m3u8")
+    while not (os.path.exists(playlist_path)):
+        await asyncio.sleep(0.5)  # check mỗi 500ms
+
+    print(f"*****Create success file m3u8 - response client")
+
+    return {
+        "message": f"RTSP stream capture started for ID: {stream_id}",
+        'stream_id': stream_id,
+    }
+
