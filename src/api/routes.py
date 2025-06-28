@@ -3,20 +3,18 @@ import json
 import shutil
 import numpy as np
 import cv2
-from typing import List
+import uuid
+import asyncio
 
+from typing import List
 from fastapi import APIRouter, HTTPException, Form, Depends, UploadFile, File
 
 from src.models.user import User
 from src.services.face_recognition import FaceRecognitionService
 from src.core.config import FACEBANK_DIR, HLS_DIR
 from src.models.rtsp import RTSPStreamRequest
-import asyncio
 from src.services.camera_reader import RTSPCameraReader # Import lớp mới
-import uuid
 from src.core.utils import wait_for_hls_ready_rtsp
-
-print('*****start routes')
 
 router = APIRouter()
 
@@ -50,17 +48,11 @@ async def start_stream_rtsp(request: RTSPStreamRequest):
   # Run reader trong một task nền
   asyncio.create_task(reader.start_reading())
 
-  # check m3u8
-  while not (os.path.exists(os.path.join(HLS_DIR, stream_id, "playlist.m3u8"))):
-        await asyncio.sleep(0.5)  # check mỗi 500ms
-        
   return {
         "message": f"RTSP stream capture started for ID: {stream_id}",
         'stream_id': stream_id,
     }
-  
-  # asyncio.create_task(wait_for_hls_ready_rtsp(playlist_file_path, stream_id))
-  
+    
 
 @router.post("/stop-stream-rtsp/{stream_id}")
 async def stop_stream_rtsp(stream_id:str):

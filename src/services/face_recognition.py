@@ -1,4 +1,8 @@
 import os
+import asyncio
+import cv2
+import subprocess
+
 import numpy as np
 from numpy.linalg import norm
 import onnxruntime as ort
@@ -6,14 +10,11 @@ import onnxruntime as ort
 from insightface.app import FaceAnalysis
 from src.core.config import FACEBANK_EMBEDDINGS_DIR, FACEBANK_NAMES_DIR, HLS_DIR
 from src.core.utils import start_ffmpeg_hls_writer
-import asyncio
-import cv2
-import subprocess
+
 
 # insightFace: CUDAExecutionProvider CPUExecutionProvider
 # This should be initialized once at startup
 
-print('*****start face serivce ', FACEBANK_EMBEDDINGS_DIR)
 
 FACEBANK_CACHE = {}
 

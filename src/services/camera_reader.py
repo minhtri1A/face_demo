@@ -1,7 +1,8 @@
 import cv2
 import asyncio
-import numpy as np
 import time
+
+import numpy as np
 from src.core.utils import start_ffmpeg_hls_writer
 
 class RTSPCameraReader:

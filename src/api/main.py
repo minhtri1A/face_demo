@@ -4,16 +4,13 @@ import matplotlib
 matplotlib.use("Agg")
 
 import sys
-# sys.path.append('/content/face_demo')
-print("🛣 sys.path:", sys.path)
+import uvicorn
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 
 from src.api.routes import router as http_router
-print('*****start api')
 from src.api.websockets import router as websocket_router
 from src.core.config import HLS_DIR
 
