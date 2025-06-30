@@ -21,20 +21,25 @@ FACEBANK_CACHE = {}
 class FaceRecognitionService:
     def __init__(self):
         # Check gpu
-        # providers = ort.get_available_providers()
-        # if 'CUDAExecutionProvider' in providers:
-        #     selected_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        # else:
-        #     selected_providers = ['CPUExecutionProvider']
+        providers = ort.get_available_providers()
+        print('*****Providers ',providers)
+        if 'CUDAExecutionProvider' in providers:
+            selected_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            selected_providers = ['CPUExecutionProvider']
             
         # Khởi tạo FaceAnalysis với provider phù hợp
         self.face_analysis_app = FaceAnalysis(
-            name='buffalo_l',
-            providers=['CPUExecutionProvider'],
-            allowed_modules=["detection", "recognition"]
+            name= 'buffalo_l',
+            providers= ['CPUExecutionProvider'],
+            allowed_modules= ["detection", "recognition"]
         )
         self.face_analysis_app.prepare(ctx_id=0)
         self._load_facebank_cache()
+
+        # check continue frame
+        self.prev_frame = None
+        self.THRESHOLD = 15  # Giá trị trung bình chênh lệch dưới ngưỡng này thì bỏ qua frame
         
     #--FaceBank
     def _load_facebank_cache(self):
@@ -83,7 +88,7 @@ class FaceRecognitionService:
     def find_best_match(self, embedding):
         facebank_embeddings, names = self.get_facebank()
         if facebank_embeddings.size == 0:
-            return None, 0.0, "unknown"
+            return None, 0.0, "--"
 
         similarities = np.dot(facebank_embeddings, embedding) / (
             norm(facebank_embeddings, axis=1) * norm(embedding) + 1e-6
@@ -95,7 +100,7 @@ class FaceRecognitionService:
         facebank_embeddings, facebank_names = self.get_facebank()
         
         if facebank_embeddings.size == 0 or embeddings.size == 0:
-            return [{"index": -1, "score": 0.0, "name": "unknown"}] * len(embeddings)
+            return [{"index": -1, "score": 0.0, "name": "--"}] * len(embeddings)
 
         sim_matrix = np.dot(embeddings, facebank_embeddings.T) / (
             np.linalg.norm(embeddings, axis=1, keepdims=True) * np.linalg.norm(facebank_embeddings, axis=1) + 1e-6
@@ -110,7 +115,7 @@ class FaceRecognitionService:
             score = best_scores[i]
             # Ensure names are handled correctly if they are Pydantic models
             name_obj = facebank_names[idx]
-            name = name_obj.name if score >= threshold and hasattr(name_obj, 'name') else "unknown"
+            name = name_obj.name if score >= threshold and hasattr(name_obj, 'name') else "--"
             results.append({
                 "index": int(idx),
                 "score": float(score),
@@ -125,6 +130,18 @@ class FaceRecognitionService:
       # Resize khung hình nếu cần (đảm bảo khớp với ffmpeg)
       if frame.shape[1] != 640 or frame.shape[0] != 480:
           frame = await asyncio.to_thread(cv2.resize, frame, (640, 480))
+
+      # Lọc frame nếu giống frame trước (ít thay đổi)
+      if self.prev_frame is not None:
+            diff = cv2.absdiff(frame, self.prev_frame)
+            mean_diff = np.mean(diff)
+            if mean_diff < self.THRESHOLD:
+                print('*****continue frame: ', mean_diff)
+                return None  # Bỏ qua frame
+
+      # Cập nhật prev_frame sau khi qua filter
+      self.prev_frame = frame.copy()
+
 
       # Face detection + embedding
       faces = await asyncio.to_thread(self.face_analysis_app.get, frame)
@@ -146,8 +163,9 @@ class FaceRecognitionService:
           for landmark in face.kps:
               x, y = map(int, landmark)
               cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
+          score_name = ''  if face_name == '--' else f'({score:.2f})'
           # Draw text
-          cv2.putText(frame, f"{face_name} ({score:.2f})", (box[0], box[1]-10),
+          cv2.putText(frame, f"{face_name} {score_name}", (box[0], box[1]-10),
                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
       return frame
     

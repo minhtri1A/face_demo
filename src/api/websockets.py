@@ -37,20 +37,11 @@ async def websocket_endpoint(websocket: WebSocket):
             if frame is None:
                 continue
 
-            # Face detection
-            faces = face_app.get(frame)
+            # Face detection 
+            frame = await face_app.process_face_frame(frame)
 
-            for idx, face in enumerate(faces):
-                print('face ', idx)
-                box = face.bbox.astype(int)
-                cv2.rectangle(frame, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 2)
-                
-                for landmark in face.kps:
-                    x, y = map(int, landmark)
-                    cv2.circle(frame, (x, y), 2, (0, 0, 255), -1)
-               
-                cv2.putText(frame, str(idx), (box[0], box[1]-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1)
+            if frame is None:
+                continue 
 
             # Encode lại frame thành JPEG để gửi về client
             _, buffer = cv2.imencode('.jpg', frame)
@@ -99,7 +90,10 @@ async def websocket_hls_streaming(websocket: WebSocket):
 
             # Face detection 
             frame = await face_app.process_face_frame(frame)
-           
+
+            if frame is None:
+                continue 
+
             # Gửi frame vào ffmpeg để tạo stream HLS
             try:
                 countFrame = countFrame +1

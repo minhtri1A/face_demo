@@ -46,6 +46,9 @@ class RTSPCameraReader:
             # Face detection 
             frame = await self.face_recognition_service.process_face_frame(frame)
             
+            if frame is None:
+                continue 
+
             #Wirte frame to hls
             try:
                 self.ffmpeg_process.stdin.write(frame.tobytes())
