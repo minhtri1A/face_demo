@@ -20,7 +20,7 @@ router = APIRouter()
 
 # Instantiate the service
 face_recognition_service = FaceRecognitionService()
-face_app = face_recognition_service.face_analysis_app
+face_app = face_recognition_service
 
 @router.websocket("/ws/face")
 async def websocket_endpoint(websocket: WebSocket):
