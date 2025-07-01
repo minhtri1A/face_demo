@@ -39,7 +39,7 @@ class FaceRecognitionService:
 
         # check continue frame
         self.prev_frame = None
-        self.THRESHOLD = 7  # Giá trị trung bình chênh lệch dưới ngưỡng này thì bỏ qua frame
+        self.THRESHOLD = 3  # Giá trị trung bình chênh lệch dưới ngưỡng này thì bỏ qua frame
         
     #--FaceBank
     def _load_facebank_cache(self):
