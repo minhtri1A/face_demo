@@ -31,7 +31,7 @@ class FaceRecognitionService:
         # Khởi tạo FaceAnalysis với provider phù hợp
         self.face_analysis_app = FaceAnalysis(
             name= 'buffalo_l',
-            providers= ['CPUExecutionProvider'],
+            providers= selected_providers,
             allowed_modules= ["detection", "recognition"]
         )
         self.face_analysis_app.prepare(ctx_id=0)
@@ -39,7 +39,7 @@ class FaceRecognitionService:
 
         # check continue frame
         self.prev_frame = None
-        self.THRESHOLD = 15  # Giá trị trung bình chênh lệch dưới ngưỡng này thì bỏ qua frame
+        self.THRESHOLD = 7  # Giá trị trung bình chênh lệch dưới ngưỡng này thì bỏ qua frame
         
     #--FaceBank
     def _load_facebank_cache(self):
